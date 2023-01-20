@@ -25,6 +25,7 @@ var argv = require('optimist').argv,
     source_host, source_port, target_host, target_port,
     web_path = null;
 
+const ack = Buffer.from("50585941434b", "hex");
 
 // Handle new WebSocket client
 new_client = function(client, req) {
@@ -45,42 +46,61 @@ new_client = function(client, req) {
       var rs = null;
     }
 
-    var target = net.createConnection(target_port,target_host, function() {
-        log('connected to target');
-    });
-    target.on('data', function(data) {
-        //log("sending message: " + data);
-
-        if (rs) {
-          var tdelta = Math.floor(new Date().getTime()) - start_time;
-          var rsdata = '\'{' + tdelta + '{' + decodeBuffer(data) + '\',\n';
-          rs.write(rsdata);
-        }
-
-        try {
-            client.send(data);
-        } catch(e) {
-            log("Client closed, cleaning up target");
-            target.end();
-        }
-    });
-    target.on('end', function() {
-        log('target disconnected');
-        client.close();
-        if (rs) {
-          rs.end('\'EOF\'];\n');
-        }
-    });
-    target.on('error', function() {
-        log('target connection error');
-        target.end();
-        client.close();
-        if (rs) {
-          rs.end('\'EOF\'];\n');
-        }
-    });
+    var target;
 
     client.on('message', function(msg) {
+        if (!target) {
+            const strMsg = msg.toString();
+            try {
+              const { addr, port } = JSON.parse(strMsg);
+              console.log({ addr, port });
+              target_port = port;
+              target_host = addr;
+            } catch (e) {
+              console.log("Protocol error, expecting connection directive first")
+              client.error()
+              client.close();
+              return;
+            }
+
+            target = net.createConnection(target_port,target_host, function() {
+                log('connected to target');
+            });
+            target.on('data', function(data) {
+                log("sending message: " + data);
+
+                if (rs) {
+                  var tdelta = Math.floor(new Date().getTime()) - start_time;
+                  var rsdata = '\'{' + tdelta + '{' + decodeBuffer(data) + '\',\n';
+                  rs.write(rsdata);
+                }
+
+                try {
+                    client.send(data);
+                } catch(e) {
+                    log("Client closed, cleaning up target");
+                    target.end();
+                }
+            });
+            target.on('end', function() {
+                log('target disconnected');
+                client.close();
+                if (rs) {
+                  rs.end('\'EOF\'];\n');
+                }
+            });
+            target.on('error', function() {
+                log('target connection error');
+                target.end();
+                client.close();
+                if (rs) {
+                  rs.end('\'EOF\'];\n');
+                }
+            });
+            client.send(ack);
+            return;
+        }
+
         //log('got message: ' + msg);
 
         if (rs) {
