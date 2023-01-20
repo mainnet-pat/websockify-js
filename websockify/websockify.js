@@ -25,6 +25,8 @@ var argv = require('optimist').argv,
     source_host, source_port, target_host, target_port,
     web_path = null;
 
+const { whitelist } = require('./whitelist');
+
 const ack = Buffer.from("50585941434b", "hex");
 
 // Handle new WebSocket client
@@ -32,7 +34,6 @@ new_client = function(client, req) {
     var clientAddr = client._socket.remoteAddress, log;
     var start_time = new Date().getTime();
 
-    console.log(req ? req.url : client.upgradeReq.url);
     log = function (msg) {
         console.log(' ' + clientAddr + ': '+ msg);
     };
@@ -53,12 +54,18 @@ new_client = function(client, req) {
             const strMsg = msg.toString();
             try {
               const { addr, port } = JSON.parse(strMsg);
-              console.log({ addr, port });
+              const addrString = `${addr}:${port}`;
+              log(`Connecting to ${addrString}`);
+              if (whitelist.indexOf(addrString) === -1) {
+                log("Dropping connection, not in whitelist");
+                client.close();
+                return;
+              }
               target_port = port;
               target_host = addr;
             } catch (e) {
-              console.log("Protocol error, expecting connection directive first")
-              client.error()
+              console.trace(e);
+              log("Protocol error, expecting connection directive first")
               client.close();
               return;
             }
@@ -67,7 +74,7 @@ new_client = function(client, req) {
                 log('connected to target');
             });
             target.on('data', function(data) {
-                log("sending message: " + data);
+                argv.debug && log("sending message: " + data);
 
                 if (rs) {
                   var tdelta = Math.floor(new Date().getTime()) - start_time;
@@ -113,11 +120,11 @@ new_client = function(client, req) {
     });
     client.on('close', function(code, reason) {
         log('WebSocket client disconnected: ' + code + ' [' + reason + ']');
-        target.end();
+        target?.end();
     });
     client.on('error', function(a) {
         log('WebSocket client error: ' + a);
-        target.end();
+        target?.end();
     });
 };
 
@@ -239,6 +246,14 @@ if (argv.cert) {
     console.log("    - Running in unencrypted HTTP (ws://) mode");
     webServer = http.createServer(http_request);
 }
+
+if (argv.whitelist) {
+  console.log("Adding extra connections to whitelist");
+  argv.whitelist.split(",").forEach(val => {
+    whitelist.push(val);
+  });
+}
+
 webServer.listen(source_port, function() {
     wsServer = new WebSocketServer({server: webServer});
     wsServer.on('connection', new_client);
