@@ -1,7 +1,7 @@
-FROM node:16
+FROM node:16-slim
 
 WORKDIR /websockify
 COPY websockify /websockify
 RUN yarn
 ENTRYPOINT ["/websockify/websockify.js"]
-CMD ["0.0.0.0:8333"]
+CMD ["0.0.0.0:8888"]

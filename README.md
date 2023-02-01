@@ -14,9 +14,51 @@ websockify](https://github.com/novnc/websockify).
 
 To run websockify-js:
 
+```
     cd websockify
-    npm install
-    ./websockify.js [options] SOURCE_ADDR:PORT TARGET_ADDR:PORT
+    yarn
+    ./websockify.js [options] [SOURCE_ADDR:]PORT [TARGET_ADDR:PORT]
+```
+If `[TARGET_ADDR:PORT]` is not specified, the client might connect to any endpoint they specify in the connection string JSON in form `{"addr": "x.x.x.x", "port": 1234}`. In this mode the proxy will await the connection string JSON as the *first message*, otherwise it will disconnect. The server will whitelist all endpoints listed in `whitelist.js` and accept extra whitelisted endpoints passed as comma separated string in `whitelist` CLI argument. Example: `--whitelist="example.com:3333,example.com:4444"`;
+
+### Docker
+
+Alternatively, use docker image to run the server, assuming the server will listen on port 8888:
+
+```
+docker run --restart=always -d --name=wsproxy -p 127.0.0.1:8888:8888 mainnetpat/wsproxy 0.0.0.0:8888 example.com:8888
+```
+
+If you are using docker, nginx and certbot for SSL support you can configure nginx with the fillowing:
+
+```
+# vi /etc/nginx/sites-enabled/default
+
+server {
+    server_name your.server.domain;
+
+    location / {
+            limit_rate 100k; # if you want to limit the bandwith passing through your proxy
+
+            proxy_set_header        Host $host;
+            proxy_set_header        X-Real-IP $remote_addr;
+            proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header        X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 7d;
+            proxy_send_timeout 7d;
+            proxy_read_timeout 7d;
+            chunked_transfer_encoding off;
+            proxy_buffering off;
+
+            proxy_pass http://127.0.0.1:8888;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Then run `sudo certbot --nginx` and follow the instructions.
 
 ### News/help/contact
 
